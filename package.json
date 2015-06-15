@@ -1,5 +1,5 @@
 {
-  "name": "gulp-electron",
+  "name": "gulp-electron-ionic",
   "version": "0.0.5",
   "description": "A gulp plugin for Electron distribute applications.",
   "main": "index.js",
