@@ -9,6 +9,7 @@ mv = require 'mv'
 mvAsync = Promise.promisify mv
 rm = require 'rimraf'
 rmAsync = Promise.promisify rm
+winresourcer = Promise.promisify(require 'winresourcer')
 util = require 'gulp-util'
 asar = require 'asar'
 chalk = require 'chalk'
@@ -18,6 +19,7 @@ through = require 'through2'
 childProcess = require 'child_process'
 ProgressBar = require 'progress'
 File = require 'vinyl'
+plist = require 'plist'
 
 
 PLUGIN_NAME = 'gulp-electron'
@@ -50,11 +52,16 @@ module.exports = electron = (options) ->
     packageJson = require(packageJson)
   options.platforms ?= ['darwin']
   options.apm ?= getApmPath()
+  options.icnsPath ?= null
+  options.iconPath ?= null
   options.symbols ?= false
   options.rebuild ?= false
   options.asar ?= false
   options.packaging ?= true
   options.ext ?= 'zip'
+
+  options.displayName ?= "Electron"
+  options.bundleId ?= "com.github.electron"
 
   options.platforms = [options.platforms] if typeof options.platforms is 'string'
 
@@ -211,6 +218,39 @@ module.exports = electron = (options) ->
         .then ->
           util.log PLUGIN_NAME, "distributeApp #{targetAppDir}"
           distributeApp options.src, targetDirPath, copyOption
+        .then ->
+          #Now - PLIST updates
+          util.log 'Updating Info.plist'
+          plistObj = plist.parse(fs.readFileSync(plistPath, 'utf8'))
+          # plistObj['CFBundleDisplayName'] = plistObj['CFBundleName'] = 'Ionic Lab';
+          plistObj['CFBundleDisplayName'] = plistObj['CFBundleName'] = options.displayName
+          plistObj['CFBundleIdentifier'] = options.bundleId
+          # fileToSave = path.join(targetAppDir, 'Info.plist')
+          fs.writeFileSync(plistPath, plist.build(plistObj))
+          util.log 'Finished updating plist file'
+        .then ->
+          if options.icnsPath and platform.indexOf('darwin') >= 0
+            util.log 'Copying Icons (icns) file'
+            # util.log 'Target app dir:' + targetAppDir
+            # util.log 'Target app path: ' + targetAppPath
+            readStream = fs.createReadStream options.icnsPath
+            atomIcnsPath = path.join targetAppPath, 'Contents', 'Resources', 'atom.icns'
+            plistPath = path.join targetAppPath, 'Contents', 'Info.plist'
+            util.log 'Copying atom.icns to: ' + atomIcnsPath
+            readStream.pipe(fs.createWriteStream(atomIcnsPath))
+            # plistObj['CFBundleIdentifier'] = 'com.ionic.lab';
+          else if platform.indexOf('win') >= 0 and options.iconPath
+            util.log 'Modifying exe with new icon'
+            # util.log 'Windows ' + targetAppDir
+            util.log 'Windows ' + path.resolve(targetAppPath)
+            util.log 'File path for ico ' + path.resolve(options.iconPath)
+            winresourcer({
+              exeFile: path.resolve(targetAppPath),
+              operation: "Update",
+              resourceType: "ICONZ",
+              resourceName: "IDR_MAINFRAME",
+              resourceFile: path.resolve(options.iconPath)
+            })
         .then ->
           if not options.asar
             return Promise.resolve()
