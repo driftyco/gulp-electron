@@ -219,15 +219,18 @@ module.exports = electron = (options) ->
           util.log PLUGIN_NAME, "distributeApp #{targetAppDir}"
           distributeApp options.src, targetDirPath, copyOption
         .then ->
-          #Now - PLIST updates
-          util.log 'Updating Info.plist'
-          plistObj = plist.parse(fs.readFileSync(plistPath, 'utf8'))
-          # plistObj['CFBundleDisplayName'] = plistObj['CFBundleName'] = 'Ionic Lab';
-          plistObj['CFBundleDisplayName'] = plistObj['CFBundleName'] = options.displayName
-          plistObj['CFBundleIdentifier'] = options.bundleId
-          # fileToSave = path.join(targetAppDir, 'Info.plist')
-          fs.writeFileSync(plistPath, plist.build(plistObj))
-          util.log 'Finished updating plist file'
+          if platform.indexOf('darwin') >= 0
+            #Now - PLIST updates
+            util.log 'Updating Info.plist'
+            plistPath = path.join targetAppPath, 'Contents', 'Info.plist'
+
+            plistObj = plist.parse(fs.readFileSync(plistPath, 'utf8'))
+            # plistObj['CFBundleDisplayName'] = plistObj['CFBundleName'] = 'Ionic Lab';
+            plistObj['CFBundleDisplayName'] = plistObj['CFBundleName'] = options.displayName
+            plistObj['CFBundleIdentifier'] = options.bundleId
+            # fileToSave = path.join(targetAppDir, 'Info.plist')
+            fs.writeFileSync(plistPath, plist.build(plistObj))
+            util.log 'Finished updating plist file'
         .then ->
           if options.icnsPath and platform.indexOf('darwin') >= 0
             util.log 'Copying Icons (icns) file'
@@ -235,7 +238,6 @@ module.exports = electron = (options) ->
             # util.log 'Target app path: ' + targetAppPath
             readStream = fs.createReadStream options.icnsPath
             atomIcnsPath = path.join targetAppPath, 'Contents', 'Resources', 'atom.icns'
-            plistPath = path.join targetAppPath, 'Contents', 'Info.plist'
             util.log 'Copying atom.icns to: ' + atomIcnsPath
             readStream.pipe(fs.createWriteStream(atomIcnsPath))
             # plistObj['CFBundleIdentifier'] = 'com.ionic.lab';
