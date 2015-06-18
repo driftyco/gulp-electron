@@ -52,6 +52,7 @@ module.exports = electron = (options) ->
     packageJson = require(packageJson)
   options.platforms ?= ['darwin']
   options.apm ?= getApmPath()
+  options.generateIconPath ?= null
   options.icnsPath ?= null
   options.iconPath ?= null
   options.symbols ?= false
@@ -116,7 +117,7 @@ module.exports = electron = (options) ->
       if platform.indexOf('darwin') >= 0
         suffix = ".app"
         electronFile = "Electron" + suffix
-        targetZip = packageJson.name + suffix
+        targetZip = options.displayName + suffix
         _src = path.join packageJson.name + suffix, 'Contents', 'Resources', 'app'
       else if platform.indexOf('win') >= 0
         suffix = ".exe"
@@ -124,10 +125,11 @@ module.exports = electron = (options) ->
         targetZip = "."
       else
         electronFile = "electron"
+        targetZip = packageJson.name #rever to name of package e.g. electron-app
       # ex: ./release/v0.24.0/darwin-x64/Electron
       electronFileDir = path.join platformDir, electronFile
       electronFilePath = path.resolve electronFileDir
-      binName = packageJson.name + suffix
+      binName = options.displayName + suffix
       targetAppDir = path.join platformDir , binName
       targetAppPath = path.join targetAppDir
       _src = path.join 'resources', 'app'
@@ -232,8 +234,40 @@ module.exports = electron = (options) ->
             fs.writeFileSync(plistPath, plist.build(plistObj))
             util.log 'Finished updating plist file'
         .then ->
+          if options.generateIconPath and platform.indexOf('darwin') >= 0 and process.platform.indexOf('darwin') >= 0
+            iconsetFilePath = path.resolve 'resources', 'atom.iconset'
+            icnsPath = path.resolve 'resources', 'atom.icns'
+            fs.mkdirSync path.resolve('resources', 'atom.iconset')
+            util.log 'Generating your iconset'
+            iconSizes = [ 16, 32, 64, 128, 256, 512 ]
+
+            iconSizes.forEach (iconSize) ->
+              util.log iconSize
+              # Example:
+              # sips -z 16 16     icon.png --out ./icon_16x16.png
+              # sips -z 32 32     icon.png --out ./icon_16x16@2x.png
+              
+              iconFileName = ['icon_', iconSize, 'x', iconSize, '.png'].join('')
+              icon2xFileName = ['icon_', iconSize, 'x', iconSize, '@2x.png'].join('')
+              cmd = ['sips -z', iconSize, iconSize, options.generateIconPath, '--out ', path.resolve(iconsetFilePath, iconFileName)].join(' ')
+              cmd2x = ['sips -z', iconSize, iconSize, options.generateIconPath, '--out ', path.resolve(iconsetFilePath, icon2xFileName)].join(' ')
+
+              util.log 'Running sips cmd ' + cmd
+              util.log 'Running sips cmd2x ' + cmd2x
+
+              childProcess.execSync cmd
+              childProcess.execSync cmd2x
+
+            # icons are created. Create icns file as follows:
+            # iconutil -c icns ionic.iconset -o ./node-webkit/node-webkit.app/Contents/Resources/nw.icns
+            iconUtilCmd = ['iconutil -c icns', iconsetFilePath, '-o', icnsPath].join(' ')
+
+            childProcess.execSync iconUtilCmd
+            options.icnsPath = icnsPath
+            # cp icon.png icon_512x512@2x.png
+        .then ->
           if options.icnsPath and platform.indexOf('darwin') >= 0
-            util.log 'Copying Icons (icns) file'
+            util.log 'Copying Icons (icns) file ' + options.icnsPath
             # util.log 'Target app dir:' + targetAppDir
             # util.log 'Target app path: ' + targetAppPath
             readStream = fs.createReadStream options.icnsPath
@@ -241,18 +275,19 @@ module.exports = electron = (options) ->
             util.log 'Copying atom.icns to: ' + atomIcnsPath
             readStream.pipe(fs.createWriteStream(atomIcnsPath))
             # plistObj['CFBundleIdentifier'] = 'com.ionic.lab';
-          else if platform.indexOf('win') >= 0 and options.iconPath
-            util.log 'Modifying exe with new icon'
-            # util.log 'Windows ' + targetAppDir
-            util.log 'Windows ' + path.resolve(targetAppPath)
-            util.log 'File path for ico ' + path.resolve(options.iconPath)
-            winresourcer({
-              exeFile: path.resolve(targetAppPath),
-              operation: "Update",
-              resourceType: "ICONZ",
-              resourceName: "IDR_MAINFRAME",
-              resourceFile: path.resolve(options.iconPath)
-            })
+
+          # else if platform.indexOf('win') >= 0 and options.iconPath
+            # util.log 'Modifying exe with new icon'
+            # # util.log 'Windows ' + targetAppDir
+            # util.log 'Windows ' + path.resolve(targetAppPath)
+            # util.log 'File path for ico ' + path.resolve(options.iconPath)
+            # winresourcer({
+            #   exeFile: path.resolve(targetAppPath),
+            #   operation: "Update",
+            #   resourceType: "ICONZ",
+            #   resourceName: "IDR_MAINFRAME",
+            #   resourceFile: path.resolve(options.iconPath)
+            # })
         .then ->
           if not options.asar
             return Promise.resolve()
